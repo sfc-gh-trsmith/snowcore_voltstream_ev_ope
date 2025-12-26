@@ -7,16 +7,22 @@
 #   2. RAW layer tables (CDC staging)
 #   3. ATOMIC layer tables (normalized model)
 #   4. EV_OPE data mart tables (analytics-ready)
-#   5. Synthetic data generation and loading
-#   6. Cortex Search service
-#   7. Streamlit application
+#   5. Upload pre-generated synthetic data to stages
+#   6. Load data into tables
+#   7. Deploy Snowflake Notebook
+#   8. Cortex Search service
+#   9. Semantic model upload
+#   10. Streamlit application
+#
+# Note: Synthetic data is pre-generated in data/synthetic/
+#       To regenerate: python3 utils/generate_synthetic_data.py --list
 #
 # Usage:
 #   ./deploy.sh                      # Full deployment with default connection
 #   ./deploy.sh -c demo              # Use 'demo' connection
 #   ./deploy.sh --prefix DEV         # Deploy with DEV_ prefix
 #   ./deploy.sh --only-streamlit     # Deploy only Streamlit app
-#   ./deploy.sh --skip-data          # Skip data generation
+#   ./deploy.sh --skip-data          # Skip data upload/loading
 ###############################################################################
 
 set -e
@@ -109,7 +115,7 @@ should_run_step() {
             [[ "$step_name" == "account_sql" || "$step_name" == "raw_sql" || "$step_name" == "atomic_sql" || "$step_name" == "ev_ope_sql" ]]
             ;;
         data)
-            [[ "$step_name" == "generate_data" || "$step_name" == "upload_data" || "$step_name" == "load_data" ]]
+            [[ "$step_name" == "upload_data" || "$step_name" == "load_data" ]]
             ;;
         notebook)
             [[ "$step_name" == "notebook" ]]
@@ -360,38 +366,13 @@ else
 fi
 
 # =============================================================================
-# Step 6: Generate Synthetic Data
+# Step 6: Upload Data to Stages
 # =============================================================================
-
-if should_run_step "generate_data" && [ "$SKIP_DATA" = false ]; then
-    echo "Step 6: Generating synthetic data..."
-    echo "------------------------------------------------"
-    
-    if [ -f "utils/generate_synthetic_data.py" ]; then
-        python3 utils/generate_synthetic_data.py \
-            --output-dir data/synthetic \
-            2>&1 || {
-                error_exit "Data generation failed"
-            }
-        log_success "Synthetic data generated"
-    else
-        log_warning "Data generation script not found, skipping"
-    fi
-    echo ""
-elif [ "$SKIP_DATA" = true ]; then
-    echo "Step 6: Skipped (--skip-data flag)"
-    echo ""
-else
-    echo "Step 6: Skipped (--only-$ONLY_COMPONENT)"
-    echo ""
-fi
-
-# =============================================================================
-# Step 7: Upload Data to Stages
-# =============================================================================
+# Note: Synthetic data is pre-generated and committed to data/synthetic/
+# To regenerate, run: utils/generate_synthetic_data.py (see --list for options)
 
 if should_run_step "upload_data" && [ "$SKIP_DATA" = false ]; then
-    echo "Step 7: Uploading data to Snowflake stages..."
+    echo "Step 6: Uploading data to Snowflake stages..."
     echo "------------------------------------------------"
     
     # Upload synthetic CSVs
@@ -421,19 +402,19 @@ if should_run_step "upload_data" && [ "$SKIP_DATA" = false ]; then
     log_success "Data upload completed"
     echo ""
 elif [ "$SKIP_DATA" = true ]; then
-    echo "Step 7: Skipped (--skip-data flag)"
+    echo "Step 6: Skipped (--skip-data flag)"
     echo ""
 else
-    echo "Step 7: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 6: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 8: Load Data into Tables
+# Step 7: Load Data into Tables
 # =============================================================================
 
 if should_run_step "load_data" && [ "$SKIP_DATA" = false ]; then
-    echo "Step 8: Loading data into tables..."
+    echo "Step 7: Loading data into tables..."
     echo "------------------------------------------------"
     
     {
@@ -451,23 +432,23 @@ if should_run_step "load_data" && [ "$SKIP_DATA" = false ]; then
     fi
     echo ""
 elif [ "$SKIP_DATA" = true ]; then
-    echo "Step 8: Skipped (--skip-data flag)"
+    echo "Step 7: Skipped (--skip-data flag)"
     echo ""
 else
-    echo "Step 8: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 7: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 9: Deploy Snowflake Notebook
+# Step 8: Deploy Snowflake Notebook
 # =============================================================================
 
 if should_run_step "notebook"; then
-    echo "Step 9: Deploying Snowflake Notebook..."
+    echo "Step 8: Deploying Snowflake Notebook..."
     echo "------------------------------------------------"
     
     NOTEBOOK_FILE="notebooks/agv_failure_prediction.ipynb"
-    NOTEBOOK_NAME="AGV_FAILURE_PREDICTION"
+    NOTEBOOK_NAME="${FULL_PREFIX}_AGV_FAILURE_PREDICTION"
     
     if [ -f "$NOTEBOOK_FILE" ]; then
         # Upload notebook to stage
@@ -510,16 +491,16 @@ if should_run_step "notebook"; then
     fi
     echo ""
 else
-    echo "Step 9: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 8: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 10: Create Cortex Search Service
+# Step 9: Create Cortex Search Service
 # =============================================================================
 
 if should_run_step "cortex_search"; then
-    echo "Step 10: Creating Cortex Search service..."
+    echo "Step 9: Creating Cortex Search service..."
     echo "------------------------------------------------"
     
     {
@@ -533,16 +514,16 @@ if should_run_step "cortex_search"; then
                                     || log_warning "Cortex Search setup failed (may require manual setup)"
     echo ""
 else
-    echo "Step 10: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 9: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 11: Upload Semantic Model
+# Step 10: Upload Semantic Model
 # =============================================================================
 
 if should_run_step "semantic_model"; then
-    echo "Step 11: Uploading semantic model..."
+    echo "Step 10: Uploading semantic model..."
     echo "------------------------------------------------"
     
     if [ -f "streamlit/semantic_models/ope_semantic_model.yaml" ]; then
@@ -558,16 +539,16 @@ if should_run_step "semantic_model"; then
     fi
     echo ""
 else
-    echo "Step 11: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 10: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 12: Deploy Streamlit App
+# Step 11: Deploy Streamlit App
 # =============================================================================
 
 if should_run_step "streamlit"; then
-    echo "Step 12: Deploying Streamlit app..."
+    echo "Step 11: Deploying Streamlit app..."
     echo "------------------------------------------------"
     
     # Complete cleanup - drop EVERYTHING for fresh start
@@ -600,7 +581,7 @@ if should_run_step "streamlit"; then
     cd ..
     echo ""
 else
-    echo "Step 12: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 11: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
