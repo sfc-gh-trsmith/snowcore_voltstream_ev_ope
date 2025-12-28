@@ -1,0 +1,11 @@
+definition_version: 2
+entities:
+  agv_failure_prediction:
+    type: notebook
+    identifier:
+      name: AGV_FAILURE_PREDICTION
+    query_warehouse: VOLTSTREAM_EV_OPE_WH
+    notebook_file: agv_failure_prediction.ipynb
+    artifacts:
+      - agv_failure_prediction.ipynb
+      - environment.yml

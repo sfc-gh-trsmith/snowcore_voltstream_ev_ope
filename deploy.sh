@@ -5,24 +5,27 @@
 # Deploys the complete OPE Intelligent Jidoka System:
 #   1. Account infrastructure (role, warehouse, database, schemas)
 #   2. RAW layer tables (CDC staging)
-#   3. ATOMIC layer tables (normalized model)
-#   4. EV_OPE data mart tables (analytics-ready)
-#   5. Upload pre-generated synthetic data to stages
-#   6. Load data into tables
-#   7. Deploy Snowflake Notebook
-#   8. Cortex Search service
-#   9. Semantic model upload
-#   10. Streamlit application
+#   3. ATOMIC layer tables (enterprise relational model)
+#   4. EV_OPE data mart views (dimensional model)
+#   5. Upload unstructured documents to stages
+#   6. Generate synthetic data via Snowpark notebook (direct to RAW/ATOMIC)
+#   7. ETL: Transform RAW to ATOMIC
+#   8. Deploy ML Snowflake Notebook
+#   9. Cortex Search service
+#   10. Semantic model upload
+#   11. Streamlit application
 #
-# Note: Synthetic data is pre-generated in data/synthetic/
-#       To regenerate: python3 utils/generate_synthetic_data.py --list
+# Medallion Architecture:
+#   RAW (Bronze)    <- Notebook generates data directly here
+#   ATOMIC (Silver) <- Enterprise relational model (ETL from RAW)
+#   EV_OPE (Gold)   <- Dimensional views over ATOMIC
 #
 # Usage:
 #   ./deploy.sh                      # Full deployment with default connection
 #   ./deploy.sh -c demo              # Use 'demo' connection
 #   ./deploy.sh --prefix DEV         # Deploy with DEV_ prefix
 #   ./deploy.sh --only-streamlit     # Deploy only Streamlit app
-#   ./deploy.sh --skip-data          # Skip data upload/loading
+#   ./deploy.sh --skip-data          # Skip data generation
 ###############################################################################
 
 set -e
@@ -69,10 +72,11 @@ Options:
   -p, --prefix PREFIX      Environment prefix for resources (e.g., DEV, PROD)
   --skip-data              Skip synthetic data generation and upload
   --only-sql               Deploy only SQL infrastructure
-  --only-data              Deploy only data (upload and load)
+  --only-data              Deploy only data (upload, load, and ETL)
   --only-notebook          Deploy only the Snowflake Notebook
   --only-streamlit         Deploy only the Streamlit app
   --only-cortex            Deploy only Cortex Search service
+  --only-agent             Deploy only the Cortex Agent
   -h, --help               Show this help message
 
 Examples:
@@ -115,16 +119,19 @@ should_run_step() {
             [[ "$step_name" == "account_sql" || "$step_name" == "raw_sql" || "$step_name" == "atomic_sql" || "$step_name" == "ev_ope_sql" ]]
             ;;
         data)
-            [[ "$step_name" == "upload_data" || "$step_name" == "load_data" ]]
+            [[ "$step_name" == "upload_docs" || "$step_name" == "generate_data" || "$step_name" == "etl" ]]
             ;;
         notebook)
-            [[ "$step_name" == "notebook" ]]
+            [[ "$step_name" == "ml_notebook" ]]
             ;;
         streamlit)
             [[ "$step_name" == "streamlit" || "$step_name" == "semantic_model" ]]
             ;;
         cortex)
             [[ "$step_name" == "cortex_search" ]]
+            ;;
+        agent)
+            [[ "$step_name" == "cortex_agent" ]]
             ;;
         *)
             return 1
@@ -171,6 +178,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --only-cortex)
             ONLY_COMPONENT="cortex"
+            shift
+            ;;
+        --only-agent)
+            ONLY_COMPONENT="agent"
             shift
             ;;
         *)
@@ -223,6 +234,8 @@ echo "  Database: $DB_NAME"
 echo "  Role: $ROLE_NAME"
 echo "  Warehouse: $WH_NAME"
 echo ""
+echo "  Architecture: RAW (Bronze) -> ATOMIC (Silver) -> EV_OPE (Gold)"
+echo ""
 
 # =============================================================================
 # Step 1: Check Prerequisites
@@ -247,7 +260,7 @@ fi
 log_success "Connection '$CONNECTION_NAME' verified"
 
 # Check required files
-for file in "sql/01_account_setup.sql" "sql/02_raw_schema.sql" "sql/03_atomic_schema.sql" "sql/04_ev_ope_schema.sql"; do
+for file in "sql/01_account_setup.sql" "sql/02_raw_schema.sql" "sql/03_atomic_schema.sql" "sql/03b_raw_to_atomic.sql" "sql/04_ev_ope_schema.sql"; do
     if [ ! -f "$file" ]; then
         error_exit "Required file not found: $file"
     fi
@@ -301,7 +314,7 @@ if should_run_step "raw_sql"; then
     } | snow sql $SNOW_CONN -i
     
     if [ $? -eq 0 ]; then
-        log_success "RAW layer created"
+        log_success "RAW layer created (Bronze)"
     else
         error_exit "RAW layer setup failed"
     fi
@@ -312,11 +325,11 @@ else
 fi
 
 # =============================================================================
-# Step 4: ATOMIC Layer Tables
+# Step 4: ATOMIC Layer Tables (Enterprise Relational Model)
 # =============================================================================
 
 if should_run_step "atomic_sql"; then
-    echo "Step 4: Creating ATOMIC layer tables..."
+    echo "Step 4: Creating ATOMIC layer tables (Enterprise Relational Model)..."
     echo "------------------------------------------------"
     
     {
@@ -328,7 +341,7 @@ if should_run_step "atomic_sql"; then
     } | snow sql $SNOW_CONN -i
     
     if [ $? -eq 0 ]; then
-        log_success "ATOMIC layer created"
+        log_success "ATOMIC layer created (Silver)"
     else
         error_exit "ATOMIC layer setup failed"
     fi
@@ -339,11 +352,11 @@ else
 fi
 
 # =============================================================================
-# Step 5: EV_OPE Data Mart Tables
+# Step 5: EV_OPE Data Mart Views (Dimensional Model)
 # =============================================================================
 
 if should_run_step "ev_ope_sql"; then
-    echo "Step 5: Creating EV_OPE data mart tables..."
+    echo "Step 5: Creating EV_OPE data mart views (Dimensional Model)..."
     echo "------------------------------------------------"
     
     {
@@ -355,7 +368,7 @@ if should_run_step "ev_ope_sql"; then
     } | snow sql $SNOW_CONN -i
     
     if [ $? -eq 0 ]; then
-        log_success "EV_OPE data mart created"
+        log_success "EV_OPE data mart created (Gold)"
     else
         error_exit "EV_OPE layer setup failed"
     fi
@@ -366,40 +379,49 @@ else
 fi
 
 # =============================================================================
-# Step 6: Upload Data to Stages
+# Step 6: Upload Unstructured Documents to Stages
 # =============================================================================
-# Note: Synthetic data is pre-generated and committed to data/synthetic/
-# To regenerate, run: utils/generate_synthetic_data.py (see --list for options)
 
-if should_run_step "upload_data" && [ "$SKIP_DATA" = false ]; then
-    echo "Step 6: Uploading data to Snowflake stages..."
+if should_run_step "upload_docs" && [ "$SKIP_DATA" = false ]; then
+    echo "Step 6: Uploading unstructured documents to stages..."
     echo "------------------------------------------------"
     
-    # Upload synthetic CSVs
-    for file in data/synthetic/*.csv; do
+    # Upload unstructured documents using PUT command
+    doc_files=(data/unstructured/*.md)
+    doc_count=0
+    for f in "${doc_files[@]}"; do
+        [ -f "$f" ] && ((doc_count++))
+    done
+    doc_current=0
+    
+    echo "Uploading $doc_count unstructured documents..."
+    echo ""
+    
+    for file in "${doc_files[@]}"; do
         if [ -f "$file" ]; then
+            ((doc_current++))
             filename=$(basename "$file")
-            snow stage copy "$file" "@${DB_NAME}.RAW.DATA_STAGE/synthetic/" \
-                $SNOW_CONN \
-                --overwrite \
-                2>&1 && log_success "Uploaded $filename" \
-                     || log_warning "Failed to upload $filename"
+            filesize=$(ls -lh "$file" | awk '{print $5}')
+            abs_path="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
+            
+            echo "($doc_current/$doc_count) $filename ($filesize)"
+            
+            # Use PUT command for documents
+            snow sql $SNOW_CONN -q "
+                PUT 'file://${abs_path}' '@${DB_NAME}.RAW.DOCS_STAGE/unstructured/'
+                AUTO_COMPRESS = TRUE
+                OVERWRITE = TRUE;
+            "
+            if [ $? -eq 0 ]; then
+                log_success "Uploaded $filename"
+            else
+                log_warning "Failed to upload $filename"
+            fi
         fi
     done
     
-    # Upload unstructured documents
-    for file in data/unstructured/*.md; do
-        if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            snow stage copy "$file" "@${DB_NAME}.RAW.DOCS_STAGE/unstructured/" \
-                $SNOW_CONN \
-                --overwrite \
-                2>&1 && log_success "Uploaded $filename" \
-                     || log_warning "Failed to upload $filename"
-        fi
-    done
-    
-    log_success "Data upload completed"
+    echo ""
+    log_success "Document upload completed"
     echo ""
 elif [ "$SKIP_DATA" = true ]; then
     echo "Step 6: Skipped (--skip-data flag)"
@@ -410,25 +432,56 @@ else
 fi
 
 # =============================================================================
-# Step 7: Load Data into Tables
+# Step 7: Generate Synthetic Data via Snowpark Notebook
 # =============================================================================
+# The generate_synthetic_data.ipynb notebook runs in Snowflake and inserts
+# directly into RAW tables and ATOMIC dimension tables. Much faster than
+# CSV upload approach.
 
-if should_run_step "load_data" && [ "$SKIP_DATA" = false ]; then
-    echo "Step 7: Loading data into tables..."
+if should_run_step "generate_data" && [ "$SKIP_DATA" = false ]; then
+    echo "Step 7: Generating synthetic data via Snowpark notebook..."
     echo "------------------------------------------------"
     
-    {
-        echo "USE ROLE ${ROLE_NAME};"
-        echo "USE DATABASE ${DB_NAME};"
-        echo "USE WAREHOUSE ${WH_NAME};"
-        echo ""
-        cat sql/06_load_data.sql
-    } | snow sql $SNOW_CONN -i
+    DATA_GEN_NOTEBOOK="notebooks/generate_synthetic_data.ipynb"
+    DATA_GEN_NOTEBOOK_NAME="${FULL_PREFIX}_GENERATE_SYNTHETIC_DATA"
     
-    if [ $? -eq 0 ]; then
-        log_success "Data loaded into tables"
+    if [ -f "$DATA_GEN_NOTEBOOK" ]; then
+        # Upload notebook to stage
+        snow stage copy \
+            "$DATA_GEN_NOTEBOOK" \
+            "@${DB_NAME}.EV_OPE.NOTEBOOKS/" \
+            $SNOW_CONN \
+            --overwrite \
+            2>&1 && log_success "Data generation notebook uploaded"
+        
+        # Create the notebook object
+        snow sql $SNOW_CONN -q "
+            USE ROLE ${ROLE_NAME};
+            USE DATABASE ${DB_NAME};
+            USE SCHEMA EV_OPE;
+            USE WAREHOUSE ${WH_NAME};
+            
+            CREATE OR REPLACE NOTEBOOK ${DATA_GEN_NOTEBOOK_NAME}
+            FROM '@${DB_NAME}.EV_OPE.NOTEBOOKS/'
+            MAIN_FILE = 'generate_synthetic_data.ipynb'
+            QUERY_WAREHOUSE = '${WH_NAME}';
+            
+            ALTER NOTEBOOK ${DATA_GEN_NOTEBOOK_NAME} ADD LIVE VERSION FROM LAST;
+        " 2>&1 && log_success "Data generation notebook created: ${DATA_GEN_NOTEBOOK_NAME}"
+        
+        # Execute the notebook to generate data
+        log_info "Executing notebook to generate synthetic data (this may take several minutes)..."
+        snow sql $SNOW_CONN -q "
+            USE ROLE ${ROLE_NAME};
+            USE DATABASE ${DB_NAME};
+            USE SCHEMA EV_OPE;
+            USE WAREHOUSE ${WH_NAME};
+            
+            EXECUTE NOTEBOOK ${DATA_GEN_NOTEBOOK_NAME}();
+        " 2>&1 && log_success "Synthetic data generated successfully" \
+               || log_warning "Notebook execution failed - you may need to run it manually in Snowsight"
     else
-        error_exit "Data loading failed"
+        error_exit "Data generation notebook not found: $DATA_GEN_NOTEBOOK"
     fi
     echo ""
 elif [ "$SKIP_DATA" = true ]; then
@@ -440,11 +493,43 @@ else
 fi
 
 # =============================================================================
-# Step 8: Deploy Snowflake Notebook
+# Step 8: ETL - Transform RAW to ATOMIC
+# =============================================================================
+# Note: ATOMIC.ASSET and ATOMIC.PRODUCT are already populated by the data 
+# generation notebook. This ETL transforms RAW transactional tables to ATOMIC.
+
+if should_run_step "etl" && [ "$SKIP_DATA" = false ]; then
+    echo "Step 8: Running ETL - RAW to ATOMIC transformation..."
+    echo "------------------------------------------------"
+    
+    {
+        echo "USE ROLE ${ROLE_NAME};"
+        echo "USE DATABASE ${DB_NAME};"
+        echo "USE WAREHOUSE ${WH_NAME};"
+        echo ""
+        cat sql/03b_raw_to_atomic.sql
+    } | snow sql $SNOW_CONN -i
+    
+    if [ $? -eq 0 ]; then
+        log_success "RAW to ATOMIC ETL completed"
+    else
+        error_exit "RAW to ATOMIC ETL failed"
+    fi
+    echo ""
+elif [ "$SKIP_DATA" = true ]; then
+    echo "Step 8: Skipped (--skip-data flag)"
+    echo ""
+else
+    echo "Step 8: Skipped (--only-$ONLY_COMPONENT)"
+    echo ""
+fi
+
+# =============================================================================
+# Step 9: Deploy ML Snowflake Notebook (AGV Failure Prediction)
 # =============================================================================
 
-if should_run_step "notebook"; then
-    echo "Step 8: Deploying Snowflake Notebook..."
+if should_run_step "ml_notebook"; then
+    echo "Step 9: Deploying ML Snowflake Notebook..."
     echo "------------------------------------------------"
     
     NOTEBOOK_FILE="notebooks/agv_failure_prediction.ipynb"
@@ -457,7 +542,7 @@ if should_run_step "notebook"; then
             "@${DB_NAME}.EV_OPE.NOTEBOOKS/" \
             $SNOW_CONN \
             --overwrite \
-            2>&1 && log_success "Notebook uploaded to stage"
+            2>&1 && log_success "ML notebook uploaded to stage"
         
         # Upload environment.yml (CRITICAL for package resolution)
         if [ -f "notebooks/environment.yml" ]; then
@@ -484,23 +569,23 @@ if should_run_step "notebook"; then
             QUERY_WAREHOUSE = '${WH_NAME}';
             
             ALTER NOTEBOOK ${NOTEBOOK_NAME} ADD LIVE VERSION FROM LAST;
-        " 2>&1 && log_success "Notebook deployed: ${NOTEBOOK_NAME}" \
-               || log_warning "Notebook deployment failed (may need manual setup)"
+        " 2>&1 && log_success "ML notebook deployed: ${NOTEBOOK_NAME}" \
+               || log_warning "ML notebook deployment failed (may need manual setup)"
     else
-        log_warning "Notebook file not found: $NOTEBOOK_FILE"
+        log_warning "ML notebook file not found: $NOTEBOOK_FILE"
     fi
     echo ""
 else
-    echo "Step 8: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 9: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 9: Create Cortex Search Service
+# Step 10: Create Cortex Search Service
 # =============================================================================
 
 if should_run_step "cortex_search"; then
-    echo "Step 9: Creating Cortex Search service..."
+    echo "Step 10: Creating Cortex Search service..."
     echo "------------------------------------------------"
     
     {
@@ -514,21 +599,21 @@ if should_run_step "cortex_search"; then
                                     || log_warning "Cortex Search setup failed (may require manual setup)"
     echo ""
 else
-    echo "Step 9: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 10: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 10: Upload Semantic Model
+# Step 11: Upload Semantic Model
 # =============================================================================
 
 if should_run_step "semantic_model"; then
-    echo "Step 10: Uploading semantic model..."
+    echo "Step 11: Uploading semantic model..."
     echo "------------------------------------------------"
     
-    if [ -f "streamlit/semantic_models/ope_semantic_model.yaml" ]; then
+    if [ -f "semantic_views/ope_semantic_model.yaml" ]; then
         snow stage copy \
-            "streamlit/semantic_models/ope_semantic_model.yaml" \
+            "semantic_views/ope_semantic_model.yaml" \
             "@${DB_NAME}.EV_OPE.SEMANTIC_MODELS/" \
             $SNOW_CONN \
             --overwrite \
@@ -539,16 +624,16 @@ if should_run_step "semantic_model"; then
     fi
     echo ""
 else
-    echo "Step 10: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 11: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
 # =============================================================================
-# Step 11: Deploy Streamlit App
+# Step 12: Deploy Streamlit App
 # =============================================================================
 
 if should_run_step "streamlit"; then
-    echo "Step 11: Deploying Streamlit app..."
+    echo "Step 12: Deploying Streamlit app..."
     echo "------------------------------------------------"
     
     # Complete cleanup - drop EVERYTHING for fresh start
@@ -561,10 +646,10 @@ if should_run_step "streamlit"; then
         DROP STAGE IF EXISTS streamlit;
     " 2>/dev/null || true
     
-    # Clear ALL local caches
+    # Clear ALL local caches (recursive to catch all __pycache__ directories)
     rm -rf streamlit/output 2>/dev/null || true
-    rm -rf streamlit/__pycache__ 2>/dev/null || true
-    rm -rf streamlit/pages/__pycache__ 2>/dev/null || true
+    find streamlit -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find streamlit -type f -name "*.pyc" -delete 2>/dev/null || true
     
     # Deploy from streamlit directory
     cd streamlit
@@ -581,7 +666,61 @@ if should_run_step "streamlit"; then
     cd ..
     echo ""
 else
-    echo "Step 11: Skipped (--only-$ONLY_COMPONENT)"
+    echo "Step 12: Skipped (--only-$ONLY_COMPONENT)"
+    echo ""
+fi
+
+# =============================================================================
+# Step 13: Deploy Cortex Agent
+# =============================================================================
+# The Cortex Agent combines Cortex Analyst (semantic model) and Cortex Search
+# tools into a unified conversational interface.
+#
+# Requires: SNOWFLAKE_PAT_TOKEN environment variable for REST API authentication
+
+if should_run_step "cortex_agent"; then
+    echo "Step 13: Deploying Cortex Agent..."
+    echo "------------------------------------------------"
+    
+    AGENT_FILE="agents/VOLTSTREAM_EV_OPE_AGENT.json"
+    
+    if [ ! -f "$AGENT_FILE" ]; then
+        log_warning "Agent configuration file not found: $AGENT_FILE"
+    elif [ -z "$SNOWFLAKE_PAT_TOKEN" ]; then
+        log_warning "SNOWFLAKE_PAT_TOKEN not set - skipping agent deployment"
+        log_info "To deploy the agent, set: export SNOWFLAKE_PAT_TOKEN='your-pat-token'"
+        log_info "Generate a PAT token in Snowsight: User Menu > Security > Programmatic Access Tokens"
+    else
+        # Extract account from snow CLI connection
+        SNOW_ACCOUNT=$(snow connection list --format json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    conns = json.load(sys.stdin)
+    for c in conns:
+        if c.get('connection_name') == '$CONNECTION_NAME':
+            print(c.get('parameters', {}).get('account', ''))
+            break
+except: pass
+" 2>/dev/null)
+        
+        if [ -z "$SNOW_ACCOUNT" ]; then
+            log_warning "Could not extract account from connection '$CONNECTION_NAME'"
+            log_info "Set SNOWFLAKE_ACCOUNT environment variable or check your connection"
+        else
+            log_info "Using account: $SNOW_ACCOUNT"
+            
+            python3 utils/sf_cortex_agent_ops.py import \
+                --input "$AGENT_FILE" \
+                --replace \
+                --account "$SNOW_ACCOUNT" \
+                --pat-token "$SNOWFLAKE_PAT_TOKEN" \
+                2>&1 && log_success "Cortex Agent deployed: ${FULL_PREFIX}_AGENT" \
+                     || log_warning "Cortex Agent deployment failed. Check PAT token permissions."
+        fi
+    fi
+    echo ""
+else
+    echo "Step 13: Skipped (--only-$ONLY_COMPONENT)"
     echo ""
 fi
 
@@ -600,9 +739,18 @@ if [ -n "$ONLY_COMPONENT" ]; then
 else
     echo "Resources Created:"
     echo "  - Database: $DB_NAME"
-    echo "  - Schemas: RAW, ATOMIC, EV_OPE"
+    echo "  - Schemas:"
+    echo "      RAW (Bronze)    - Landing zone for CDC data"
+    echo "      ATOMIC (Silver) - Enterprise relational model"
+    echo "      EV_OPE (Gold)   - Dimensional views for analytics"
     echo "  - Role: $ROLE_NAME"
     echo "  - Warehouse: $WH_NAME"
+    echo ""
+    echo "Data Flow:"
+    echo "  1. Snowpark notebook generates data directly into RAW tables"
+    echo "  2. Notebook also populates ATOMIC dimension tables (ASSET, PRODUCT)"
+    echo "  3. ETL transforms RAW transactional data to ATOMIC tables"
+    echo "  4. EV_OPE views project from ATOMIC (dimensional model)"
     echo ""
     echo "Next Steps:"
     echo "  1. Check deployment status:"

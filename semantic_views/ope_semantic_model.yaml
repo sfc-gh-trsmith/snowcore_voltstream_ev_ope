@@ -1,0 +1,442 @@
+# =============================================================================
+# OPE Semantic Model for Cortex Analyst
+# =============================================================================
+# Enables natural language queries about OPE metrics, production performance,
+# and AGV fleet health for the VoltStream EV Gigafactory.
+#
+# Key measures: OPE_Score, OEE_Score, Downtime, Starvation, AGV Failures
+# Key dimensions: Production_Line, Shift, Date
+# =============================================================================
+
+name: ope_analytics_model
+description: >
+  Semantic model for analyzing Overall Process Efficiency (OPE) metrics
+  at the VoltStream EV Gigafactory. Enables queries about production
+  performance, equipment efficiency (OEE vs OPE comparison), downtime
+  analysis, and AGV fleet reliability.
+
+# =============================================================================
+# TABLES
+# =============================================================================
+tables:
+  # ---------------------------------------------------------------------------
+  # OPE Daily Fact - Primary metrics table
+  # ---------------------------------------------------------------------------
+  - name: ope_metrics
+    description: >
+      Daily production metrics by line and shift. Contains both OEE 
+      (equipment-focused) and OPE (process-focused) measures. Use this table
+      for questions about production efficiency, throughput, and downtime.
+    base_table:
+      database: VOLTSTREAM_EV_OPE
+      schema: EV_OPE
+      table: OPE_DAILY_FACT
+    primary_key:
+      columns: [METRIC_DATE, PRODUCTION_LINE_ID, SHIFT_ID]
+
+    # Dimensions
+    dimensions:
+      - name: metric_date
+        synonyms: ["date", "production date", "day"]
+        description: The date of production metrics
+        expr: METRIC_DATE
+        data_type: DATE
+
+      - name: production_line
+        synonyms: ["line", "line id", "manufacturing line", "assembly line"]
+        description: Production line identifier (LINE_1 through LINE_5)
+        expr: PRODUCTION_LINE_ID
+        data_type: TEXT
+        sample_values: ["LINE_1", "LINE_2", "LINE_3", "LINE_4", "LINE_5"]
+
+      - name: shift
+        synonyms: ["shift id", "work shift"]
+        description: Work shift identifier
+        expr: SHIFT_ID
+        data_type: TEXT
+        sample_values: ["SHIFT_1", "SHIFT_2", "SHIFT_3"]
+
+    # Time Dimensions
+    time_dimensions:
+      - name: date
+        synonyms: ["day", "metric date"]
+        description: Date for time-based analysis and filtering
+        expr: METRIC_DATE
+        data_type: DATE
+
+    # Facts (raw numeric columns)
+    facts:
+      - name: oee_pct
+        synonyms: ["oee", "oee score", "equipment efficiency", "overall equipment effectiveness"]
+        description: Overall Equipment Effectiveness percentage (Availability × Performance × Quality)
+        expr: OEE_PCT
+        data_type: NUMBER
+
+      - name: ope_pct
+        synonyms: ["ope", "ope score", "process efficiency", "overall process efficiency"]
+        description: Overall Process Efficiency percentage - accounts for wait time and material flow
+        expr: OPE_PCT
+        data_type: NUMBER
+
+      - name: oee_availability
+        synonyms: ["availability", "uptime percentage"]
+        description: Equipment availability percentage (uptime / planned time)
+        expr: OEE_AVAILABILITY_PCT
+        data_type: NUMBER
+
+      - name: oee_performance
+        synonyms: ["performance", "speed efficiency"]
+        description: Performance efficiency (actual throughput / theoretical throughput)
+        expr: OEE_PERFORMANCE_PCT
+        data_type: NUMBER
+
+      - name: oee_quality
+        synonyms: ["quality", "quality rate"]
+        description: Quality rate (good units / total units)
+        expr: OEE_QUALITY_PCT
+        data_type: NUMBER
+
+      - name: planned_quantity
+        synonyms: ["target quantity", "planned units"]
+        description: Planned production quantity
+        expr: PLANNED_QUANTITY
+        data_type: NUMBER
+
+      - name: actual_quantity
+        synonyms: ["actual units", "produced quantity", "output"]
+        description: Actual units produced
+        expr: ACTUAL_QUANTITY
+        data_type: NUMBER
+
+      - name: scrap_quantity
+        synonyms: ["scrap", "scrapped units", "waste"]
+        description: Number of scrapped/defective units
+        expr: SCRAP_QUANTITY
+        data_type: NUMBER
+
+      - name: yield_pct
+        synonyms: ["yield", "yield rate"]
+        description: Production yield percentage
+        expr: YIELD_PCT
+        data_type: NUMBER
+
+      - name: downtime_minutes
+        synonyms: ["downtime", "total downtime"]
+        description: Total downtime in minutes
+        expr: DOWNTIME_MIN
+        data_type: NUMBER
+
+      - name: starvation_downtime
+        synonyms: ["starvation", "material starvation", "starvation minutes", "waiting for material"]
+        description: Downtime due to material starvation (waiting for AGV delivery)
+        expr: STARVATION_DOWNTIME_MIN
+        data_type: NUMBER
+
+      - name: agv_failure_count
+        synonyms: ["agv failures", "agv errors", "vehicle failures"]
+        description: Number of AGV failures/errors during the period
+        expr: AGV_FAILURE_COUNT
+        data_type: NUMBER
+
+      - name: agv_err_99_count
+        synonyms: ["agv err 99", "sensor errors", "optical sensor errors", "dust errors"]
+        description: Count of AGV-ERR-99 (optical sensor obscured) errors - typically caused by dust
+        expr: AGV_ERR_99_COUNT
+        data_type: NUMBER
+
+      - name: avg_humidity
+        synonyms: ["humidity", "ambient humidity"]
+        description: Average humidity percentage during the period
+        expr: AVG_HUMIDITY
+        data_type: NUMBER
+
+      - name: avg_dust
+        synonyms: ["dust", "pm25", "dust level", "particulate matter"]
+        description: Average PM2.5 dust level in µg/m³
+        expr: AVG_DUST_PM25
+        data_type: NUMBER
+
+    # Metrics (aggregations)
+    metrics:
+      - name: total_output
+        synonyms: ["total production", "total units"]
+        description: Sum of actual units produced
+        expr: SUM(ope_metrics.ACTUAL_QUANTITY)
+
+      - name: average_ope
+        synonyms: ["avg ope", "mean ope"]
+        description: Average OPE percentage
+        expr: AVG(ope_metrics.OPE_PCT)
+
+      - name: average_oee
+        synonyms: ["avg oee", "mean oee"]
+        description: Average OEE percentage
+        expr: AVG(ope_metrics.OEE_PCT)
+
+      - name: oee_ope_gap
+        synonyms: ["efficiency gap", "ope gap", "hidden inefficiency"]
+        description: Difference between OEE and OPE - reveals hidden process inefficiencies
+        expr: AVG(ope_metrics.OEE_PCT) - AVG(ope_metrics.OPE_PCT)
+
+      - name: total_starvation_time
+        synonyms: ["starvation time", "material wait time"]
+        description: Total minutes of material starvation downtime
+        expr: SUM(ope_metrics.STARVATION_DOWNTIME_MIN)
+
+      - name: total_agv_failures
+        synonyms: ["agv error count"]
+        description: Total number of AGV failures
+        expr: SUM(ope_metrics.AGV_FAILURE_COUNT)
+
+      - name: dust_related_failures
+        synonyms: ["sensor failures", "err 99 count"]
+        description: Total AGV-ERR-99 errors (dust/sensor related)
+        expr: SUM(ope_metrics.AGV_ERR_99_COUNT)
+
+    # Filters
+    filters:
+      - name: last_7_days
+        synonyms: ["last week", "past week", "recent"]
+        description: Filter to last 7 days of data
+        expr: METRIC_DATE >= DATEADD(day, -7, CURRENT_DATE())
+
+      - name: last_30_days
+        synonyms: ["last month", "past month"]
+        description: Filter to last 30 days of data
+        expr: METRIC_DATE >= DATEADD(day, -30, CURRENT_DATE())
+
+      - name: crisis_period
+        synonyms: ["incident period", "problem period"]
+        description: Filter to the crisis period (Dec 9-11, 2024) when OPE dropped
+        expr: METRIC_DATE BETWEEN '2024-12-09' AND '2024-12-11'
+
+      - name: line_4
+        synonyms: ["line four", "assembly line 4"]
+        description: Filter to Line 4 only
+        expr: PRODUCTION_LINE_ID = 'LINE_4'
+
+      - name: morning_shift
+        synonyms: ["shift 1", "first shift"]
+        description: Filter to morning shift (6am-2pm)
+        expr: SHIFT_ID = 'SHIFT_1'
+
+  # ---------------------------------------------------------------------------
+  # AGV Failure Analysis - ML training data
+  # ---------------------------------------------------------------------------
+  - name: agv_analysis
+    description: >
+      Hourly AGV failure analysis with environmental correlation. Shows the
+      relationship between humidity, dust levels, and AGV failures. Use for
+      questions about AGV reliability, environmental impact, and predictive
+      maintenance.
+    base_table:
+      database: VOLTSTREAM_EV_OPE
+      schema: EV_OPE
+      table: AGV_FAILURE_ANALYSIS
+    primary_key:
+      columns: [ANALYSIS_DATE, ANALYSIS_HOUR, SHIFT_ID, ZONE_ID]
+
+    dimensions:
+      - name: analysis_date
+        synonyms: ["date"]
+        description: Date of analysis
+        expr: ANALYSIS_DATE
+        data_type: DATE
+
+      - name: hour
+        synonyms: ["hour of day", "time"]
+        description: Hour of day (0-23)
+        expr: ANALYSIS_HOUR
+        data_type: NUMBER
+
+      - name: zone
+        synonyms: ["zone id", "factory zone", "area"]
+        description: Factory zone identifier
+        expr: ZONE_ID
+        data_type: TEXT
+        sample_values: ["ZONE_A", "ZONE_B", "ZONE_C", "ZONE_D"]
+
+      - name: humidity_category
+        synonyms: ["humidity level", "moisture level"]
+        description: Categorized humidity level
+        expr: HUMIDITY_CATEGORY
+        data_type: TEXT
+        sample_values: ["LOW", "NORMAL", "HIGH"]
+
+      - name: dust_category
+        synonyms: ["dust level category", "particulate level"]
+        description: Categorized dust level
+        expr: DUST_CATEGORY
+        data_type: TEXT
+        sample_values: ["LOW", "MODERATE", "HIGH"]
+
+    time_dimensions:
+      - name: date
+        description: Analysis date for time filtering
+        expr: ANALYSIS_DATE
+        data_type: DATE
+
+    facts:
+      - name: humidity
+        synonyms: ["avg humidity", "humidity percentage"]
+        description: Average humidity percentage
+        expr: AVG_HUMIDITY
+        data_type: NUMBER
+
+      - name: dust_pm25
+        synonyms: ["dust", "pm25", "particulate"]
+        description: Average PM2.5 dust level
+        expr: AVG_DUST_PM25
+        data_type: NUMBER
+
+      - name: total_operations
+        synonyms: ["agv operations", "delivery count"]
+        description: Total AGV operations in the period
+        expr: TOTAL_AGV_OPERATIONS
+        data_type: NUMBER
+
+      - name: failed_operations
+        synonyms: ["failures", "failed deliveries"]
+        description: Number of failed AGV operations
+        expr: FAILED_OPERATIONS
+        data_type: NUMBER
+
+      - name: failure_rate
+        synonyms: ["error rate", "failure percentage"]
+        description: AGV failure rate (0-1)
+        expr: FAILURE_RATE
+        data_type: NUMBER
+
+      - name: err_99_count
+        synonyms: ["sensor errors", "optical errors", "dust errors"]
+        description: Count of AGV-ERR-99 sensor errors
+        expr: AGV_ERR_99_COUNT
+        data_type: NUMBER
+
+      - name: starvation_events
+        synonyms: ["starvation count"]
+        description: Number of production starvation events caused
+        expr: STARVATION_EVENTS_CAUSED
+        data_type: NUMBER
+
+    metrics:
+      - name: avg_failure_rate
+        description: Average AGV failure rate
+        expr: AVG(agv_analysis.FAILURE_RATE)
+
+      - name: total_err_99
+        synonyms: ["sensor error total"]
+        description: Total AGV-ERR-99 errors
+        expr: SUM(agv_analysis.AGV_ERR_99_COUNT)
+
+      - name: avg_dust_level
+        description: Average dust level
+        expr: AVG(agv_analysis.AVG_DUST_PM25)
+
+      - name: avg_humidity_level
+        description: Average humidity level
+        expr: AVG(agv_analysis.AVG_HUMIDITY)
+
+# =============================================================================
+# VERIFIED QUERIES
+# =============================================================================
+# These serve as examples and test cases for Cortex Analyst
+
+verified_queries:
+  - name: ope_by_line_last_week
+    question: "What was the average OPE for each production line last week?"
+    sql: |
+      SELECT
+        PRODUCTION_LINE_ID,
+        ROUND(AVG(OPE_PCT), 2) AS avg_ope
+      FROM VOLTSTREAM_EV_OPE.EV_OPE.OPE_DAILY_FACT
+      WHERE METRIC_DATE >= DATEADD(day, -7, CURRENT_DATE())
+      GROUP BY PRODUCTION_LINE_ID
+      ORDER BY avg_ope DESC
+
+  - name: oee_vs_ope_gap
+    question: "Show me the gap between OEE and OPE by line"
+    sql: |
+      SELECT
+        PRODUCTION_LINE_ID,
+        ROUND(AVG(OEE_PCT), 2) AS avg_oee,
+        ROUND(AVG(OPE_PCT), 2) AS avg_ope,
+        ROUND(AVG(OEE_PCT) - AVG(OPE_PCT), 2) AS efficiency_gap
+      FROM VOLTSTREAM_EV_OPE.EV_OPE.OPE_DAILY_FACT
+      WHERE METRIC_DATE >= DATEADD(day, -30, CURRENT_DATE())
+      GROUP BY PRODUCTION_LINE_ID
+      ORDER BY efficiency_gap DESC
+
+  - name: line_4_ope_by_shift
+    question: "Show me the average OPE for Line 4 grouped by shift for the last week"
+    sql: |
+      SELECT
+        SHIFT_ID,
+        ROUND(AVG(OPE_PCT), 2) AS avg_ope
+      FROM VOLTSTREAM_EV_OPE.EV_OPE.OPE_DAILY_FACT
+      WHERE PRODUCTION_LINE_ID = 'LINE_4'
+        AND METRIC_DATE >= DATEADD(day, -7, CURRENT_DATE())
+      GROUP BY SHIFT_ID
+      ORDER BY SHIFT_ID
+
+  - name: starvation_analysis
+    question: "Which lines had the most starvation downtime?"
+    sql: |
+      SELECT
+        PRODUCTION_LINE_ID,
+        SUM(STARVATION_DOWNTIME_MIN) AS total_starvation_min,
+        SUM(AGV_FAILURE_COUNT) AS total_agv_failures,
+        ROUND(AVG(OPE_PCT), 2) AS avg_ope
+      FROM VOLTSTREAM_EV_OPE.EV_OPE.OPE_DAILY_FACT
+      WHERE METRIC_DATE >= DATEADD(day, -30, CURRENT_DATE())
+      GROUP BY PRODUCTION_LINE_ID
+      ORDER BY total_starvation_min DESC
+
+  - name: humidity_dust_correlation
+    question: "What is the relationship between humidity, dust, and AGV failures?"
+    sql: |
+      SELECT
+        HUMIDITY_CATEGORY,
+        DUST_CATEGORY,
+        COUNT(*) AS observation_count,
+        ROUND(AVG(FAILURE_RATE) * 100, 2) AS avg_failure_rate_pct,
+        SUM(AGV_ERR_99_COUNT) AS total_sensor_errors
+      FROM VOLTSTREAM_EV_OPE.EV_OPE.AGV_FAILURE_ANALYSIS
+      GROUP BY HUMIDITY_CATEGORY, DUST_CATEGORY
+      ORDER BY avg_failure_rate_pct DESC
+
+  - name: crisis_period_impact
+    question: "What happened to OPE during December 9-11?"
+    sql: |
+      SELECT
+        METRIC_DATE,
+        PRODUCTION_LINE_ID,
+        OEE_PCT,
+        OPE_PCT,
+        STARVATION_DOWNTIME_MIN,
+        AGV_ERR_99_COUNT,
+        AVG_HUMIDITY,
+        AVG_DUST_PM25
+      FROM VOLTSTREAM_EV_OPE.EV_OPE.OPE_DAILY_FACT
+      WHERE METRIC_DATE BETWEEN '2024-12-09' AND '2024-12-11'
+      ORDER BY METRIC_DATE, PRODUCTION_LINE_ID
+
+# =============================================================================
+# CUSTOM INSTRUCTIONS
+# =============================================================================
+custom_instructions: >
+  When analyzing OPE vs OEE, always highlight the gap between them as this
+  reveals hidden process inefficiencies. OEE measures equipment effectiveness
+  while OPE measures overall process efficiency including wait times and
+  material flow.
+  
+  When users ask about "efficiency" without specifying, default to OPE as it
+  provides a more complete picture of production performance.
+  
+  For questions about AGV issues, starvation, or delivery problems, check the
+  agv_analysis table which shows the correlation with environmental factors.
+  
+  The crisis period (December 9-11, 2024) shows a clear example where low
+  humidity led to high dust which caused AGV sensor failures, resulting in
+  material starvation and OPE drop on Line 4.
+

@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 550" width="900" height="550">
+  <!-- Background -->
+  <rect width="900" height="550" fill="#0f172a"/>
+  
+  <!-- Browser Chrome -->
+  <rect x="20" y="20" width="860" height="510" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  
+  <!-- Title Bar -->
+  <rect x="20" y="20" width="860" height="35" rx="10" fill="#334155"/>
+  <rect x="20" y="45" width="860" height="10" fill="#334155"/>
+  
+  <!-- Browser Dots -->
+  <circle cx="45" cy="38" r="6" fill="#ef4444"/>
+  <circle cx="68" cy="38" r="6" fill="#f59e0b"/>
+  <circle cx="91" cy="38" r="6" fill="#10b981"/>
+  
+  <!-- URL Bar -->
+  <rect x="120" y="28" width="400" height="20" rx="4" fill="#1e293b"/>
+  <text x="135" y="42" fill="#64748b" font-family="monospace" font-size="10">voltstream-ope.snowflakecomputing.app</text>
+  
+  <!-- Sidebar -->
+  <rect x="20" y="55" width="180" height="475" fill="#0f172a"/>
+  
+  <!-- Logo Area -->
+  <rect x="35" y="70" width="150" height="40" rx="4" fill="#1e293b"/>
+  <text x="110" y="88" fill="#29b5e8" font-family="system-ui, sans-serif" font-size="11" font-weight="700" text-anchor="middle">VOLTSTREAM</text>
+  <text x="110" y="102" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle">OPE Dashboard</text>
+  
+  <!-- Nav Items -->
+  <rect x="35" y="125" width="150" height="32" rx="4" fill="#29b5e820" stroke="#29b5e8" stroke-width="1"/>
+  <text x="55" y="145" fill="#29b5e8" font-family="system-ui, sans-serif" font-size="11" font-weight="600">Executive Dashboard</text>
+  
+  <text x="55" y="180" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">Unit Economics</text>
+  <text x="55" y="210" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">Operations Control</text>
+  <text x="55" y="240" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">ML Analysis</text>
+  <text x="55" y="270" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">About</text>
+  
+  <!-- Main Content Area -->
+  <rect x="200" y="55" width="680" height="475" fill="#0f172a"/>
+  
+  <!-- Page Header -->
+  <text x="220" y="85" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="18" font-weight="700">Executive Dashboard</text>
+  <text x="220" y="105" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="11">Real-time OPE metrics and AI-powered insights</text>
+  
+  <!-- KPI Cards Row -->
+  <rect x="220" y="120" width="155" height="70" rx="6" fill="#1e293b"/>
+  <text x="235" y="142" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10">OPE Score</text>
+  <text x="235" y="170" fill="#10b981" font-family="system-ui, sans-serif" font-size="24" font-weight="700">78.4%</text>
+  <text x="315" y="170" fill="#10b981" font-family="system-ui, sans-serif" font-size="10">▲ 2.1%</text>
+  
+  <rect x="385" y="120" width="155" height="70" rx="6" fill="#1e293b"/>
+  <text x="400" y="142" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10">OEE Score</text>
+  <text x="400" y="170" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="24" font-weight="700">91.2%</text>
+  <text x="480" y="170" fill="#64748b" font-family="system-ui, sans-serif" font-size="10">▲ 0.3%</text>
+  
+  <rect x="550" y="120" width="155" height="70" rx="6" fill="#1e293b"/>
+  <text x="565" y="142" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10">Efficiency Gap</text>
+  <text x="565" y="170" fill="#f59e0b" font-family="system-ui, sans-serif" font-size="24" font-weight="700">12.8%</text>
+  <text x="645" y="170" fill="#10b981" font-family="system-ui, sans-serif" font-size="10">▼ 1.8%</text>
+  
+  <rect x="715" y="120" width="150" height="70" rx="6" fill="#1e293b"/>
+  <text x="730" y="142" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10">AGV Failures</text>
+  <text x="730" y="170" fill="#ef4444" font-family="system-ui, sans-serif" font-size="24" font-weight="700">12</text>
+  <text x="770" y="170" fill="#ef4444" font-family="system-ui, sans-serif" font-size="10">▲ 8</text>
+  
+  <!-- Chart Area -->
+  <rect x="220" y="200" width="420" height="200" rx="6" fill="#1e293b"/>
+  <text x="240" y="225" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">OPE vs OEE Trend (Last 7 Days)</text>
+  
+  <!-- Simple line chart representation -->
+  <line x1="260" y1="370" x2="600" y2="370" stroke="#475569" stroke-width="1"/>
+  <line x1="260" y1="260" x2="260" y2="370" stroke="#475569" stroke-width="1"/>
+  
+  <!-- OEE Line (green, higher) -->
+  <polyline points="280,280 340,275 400,285 460,270 520,275 580,278" stroke="#10b981" stroke-width="2" fill="none"/>
+  
+  <!-- OPE Line (orange, lower) -->
+  <polyline points="280,320 340,335 400,350 460,340 520,325 580,315" stroke="#f59e0b" stroke-width="2" fill="none"/>
+  
+  <!-- Legend -->
+  <rect x="500" y="240" width="8" height="8" rx="2" fill="#10b981"/>
+  <text x="515" y="248" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9">OEE</text>
+  <rect x="550" y="240" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="565" y="248" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9">OPE</text>
+  
+  <!-- AI Insights Panel -->
+  <rect x="650" y="200" width="215" height="200" rx="6" fill="#1e293b"/>
+  <text x="670" y="225" fill="#29b5e8" font-family="system-ui, sans-serif" font-size="12" font-weight="600">AI Insights</text>
+  
+  <!-- Alert box -->
+  <rect x="665" y="240" width="185" height="60" rx="4" fill="#ef444420" stroke="#ef4444" stroke-width="1"/>
+  <text x="680" y="260" fill="#ef4444" font-family="system-ui, sans-serif" font-size="10" font-weight="600">⚠ AGV Alert</text>
+  <text x="680" y="278" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="9">High dust levels on Line 4</text>
+  <text x="680" y="292" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">Recommend: Dust Mitigation</text>
+  
+  <!-- Recommendation box -->
+  <rect x="665" y="310" width="185" height="75" rx="4" fill="#10b98120" stroke="#10b981" stroke-width="1"/>
+  <text x="680" y="330" fill="#10b981" font-family="system-ui, sans-serif" font-size="10" font-weight="600">✓ Recommendation</text>
+  <text x="680" y="348" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="9">Initiate cleaning cycle on</text>
+  <text x="680" y="362" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="9">AGV fleet at 14:00</text>
+  <text x="680" y="378" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">Est. impact: +5% OPE</text>
+  
+  <!-- Chat Interface -->
+  <rect x="220" y="410" width="645" height="110" rx="6" fill="#1e293b"/>
+  <text x="240" y="435" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="12" font-weight="600">VoltStream Co-Pilot</text>
+  
+  <!-- Chat input -->
+  <rect x="240" y="450" width="500" height="35" rx="4" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+  <text x="255" y="472" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">Ask about OPE, failures, or request recommendations...</text>
+  
+  <!-- Send button -->
+  <rect x="750" y="450" width="95" height="35" rx="4" fill="#29b5e8"/>
+  <text x="798" y="472" fill="#ffffff" font-family="system-ui, sans-serif" font-size="11" font-weight="600" text-anchor="middle">Send</text>
+  
+  <!-- Sample conversation -->
+  <text x="240" y="505" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10">Recent: "Why did OPE drop on Line 4?" → Agent identified humidity correlation</text>
+</svg>
+

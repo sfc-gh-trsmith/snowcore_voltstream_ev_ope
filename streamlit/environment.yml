@@ -1,0 +1,11 @@
+name: voltstream_ope
+channels:
+  - snowflake
+dependencies:
+  - pandas
+  - numpy
+  - plotly
+  - altair
+  - snowflake-snowpark-python
+  - snowflake-ml-python
+  - streamlit

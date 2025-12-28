@@ -207,3 +207,9 @@ marimo/_lsp/
 __marimo__/
 cursor_scratch/
 .cursor/
+streamlit/output
+solution_presentation/VoltStream_OPE_Architecture.md
+solution_presentation/VoltStream_OPE_Video_Script.md
+solution_presentation/VoltStream_OPE_Slides.md
+solution_presentation/VoltStream_OPE_Blog.md
+solution_presentation/VoltStream_OPE_Sources.md

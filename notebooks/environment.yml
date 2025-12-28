@@ -1,0 +1,13 @@
+name: agv_failure_prediction
+channels:
+  - snowflake
+dependencies:
+  - numpy
+  - pandas
+  - scikit-learn
+  - xgboost
+  - matplotlib
+  - seaborn
+  - snowflake-snowpark-python
+  - snowflake-ml-python
+
