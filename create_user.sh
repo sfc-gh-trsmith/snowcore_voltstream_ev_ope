@@ -467,8 +467,12 @@ echo -e "${GREEN}[OK]${NC} Warehouse '$SNOWFLAKE_WAREHOUSE' exists"
 COMPUTE_POOL_EXISTS=false
 if [ -n "$COMPUTE_POOL_NAME" ]; then
     echo "Checking compute pool..."
-    CP_CHECK=$(snow sql -c "$CONNECTION_NAME" -q "SHOW COMPUTE POOLS LIKE '$COMPUTE_POOL_NAME'" 2>&1)
-    if echo "$CP_CHECK" | grep -qi "$COMPUTE_POOL_NAME"; then
+    # Use JSON format to reliably check if compute pool exists
+    # Empty result returns "[]", actual results return "[{...}]"
+    CP_CHECK=$(snow sql -c "$CONNECTION_NAME" -q "SHOW COMPUTE POOLS LIKE '$COMPUTE_POOL_NAME'" --format json 2>&1)
+    CP_EXIT_CODE=$?
+    # Check if command succeeded AND JSON output contains actual data (not empty array)
+    if [ $CP_EXIT_CODE -eq 0 ] && [ "$CP_CHECK" != "[]" ] && echo "$CP_CHECK" | grep -q '^\[{'; then
         COMPUTE_POOL_EXISTS=true
         echo -e "${GREEN}[OK]${NC} Compute pool '$COMPUTE_POOL_NAME' exists"
     else
@@ -669,12 +673,6 @@ GRANT USAGE ON DATABASE ${SNOWFLAKE_DATABASE} TO ROLE ${SNOWFLAKE_ROLE};
 
 ${SCHEMA_GRANTS}
 ${COMPUTE_POOL_GRANTS}
--- ============================================================
--- GRANT NOTEBOOK ACCESS
--- ============================================================
-
-GRANT USAGE ON ALL NOTEBOOKS IN SCHEMA ${SNOWFLAKE_DATABASE}.EV_OPE TO ROLE ${SNOWFLAKE_ROLE};
-
 -- ============================================================
 -- GRANT CORTEX LLM ACCESS
 -- ============================================================
